@@ -1,6 +1,6 @@
 <?php
 
-namespace Terraformers\TurnstileCaptcha\Forms;
+namespace Terraformers\TurnstileCaptcha\Http;
 
 use GuzzleHttp\Client;
 use SilverStripe\Core\Injector\Injectable;

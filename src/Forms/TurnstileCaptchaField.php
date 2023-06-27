@@ -2,13 +2,16 @@
 
 namespace Terraformers\TurnstileCaptcha\Forms;
 
+use GuzzleHttp\Exception\RequestException;
+use Locale;
 use Psr\Log\LoggerInterface;
 use SilverStripe\Control\Controller;
+use SilverStripe\Core\Environment;
 use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Forms\FormField;
 use SilverStripe\i18n\i18n;
 use SilverStripe\View\Requirements;
-use Locale;
+use Terraformers\TurnstileCaptcha\Http\HttpClient;
 
 class TurnstileCaptchaField extends FormField
 {
@@ -141,7 +144,7 @@ class TurnstileCaptchaField extends FormField
     public function Field($properties = array())
     {
         $siteKey = $this->getSiteKey();
-        $secretKey = $this->_secretKey ? $this->_secretKey : self::config()->secret_key;
+        $secretKey = $this->_secretKey ? $this->_secretKey :  Environment::getEnv('SS_TURNSTILE_SECRET_KEY');
 
         if (empty($siteKey) || empty($secretKey)) {
             user_error('You must configure site_key and secret_key, you can retrieve these at https://developers.cloudflare.com/turnstile/', E_USER_ERROR);
@@ -179,7 +182,7 @@ class TurnstileCaptchaField extends FormField
         }
 
         $curlOptions = [];
-        $secret_key = $this->_secretKey ?: self::config()->secret_key;
+        $secret_key = $this->_secretKey ?: Environment::getEnv('SS_TURNSTILE_SECRET_KEY');
         $proxy_server = $this->_proxyServer ?: self::config()->proxy_server;
         if (!empty($proxy_server)) {
             $curlOptions[CURLOPT_PROXY] = $proxy_server;
@@ -197,16 +200,23 @@ class TurnstileCaptchaField extends FormField
         $curlOptions[CURLOPT_RETURNTRANSFER] = true;
         $curlOptions[CURLOPT_SSL_VERIFYPEER] = self::config()->verify_ssl;
         $curlOptions[CURLOPT_USERAGENT] = str_replace(',', '/', 'SilverStripe');
-        $client = HttpClient::singleton();
+        $client = HttpClient::create()->getClient();
 
-        $response = $client->request('POST', 'https://challenges.cloudflare.com/turnstile/v0/siteverify', [
-            'json' => [
-                'secret' => $secret_key,
-                'response' => $recaptchaResponse,
-                'remoteip' => $request->getIP(),
-            ],
-            'curl' => $curlOptions
-        ]);
+       try {
+           $response = $client->request('POST', 'https://challenges.cloudflare.com/turnstile/v0/siteverify',[
+               'json' => [
+                   'secret' => $secret_key,
+                   'response' => $recaptchaResponse,
+                   'remoteip' => $request->getIP(),
+               ],
+               'curl' => $curlOptions,
+               'timeout' =>10
+           ]);
+       }catch (Throwable $e) {
+           if($e instanceof RequestException && $e->hasResponse()){
+               return  $e->getResponse();
+           }
+       }
 
         if ($response->getStatusCode() !== 200) {
             $validator->validationError($this->name, _t(
@@ -272,7 +282,7 @@ class TurnstileCaptchaField extends FormField
      */
     public function getSiteKey(): string
     {
-        return $this->_sitekey ? $this->_sitekey : self::config()->site_key;
+        return $this->_sitekey ? $this->_sitekey : Environment::getEnv('SS_TURNSTILE_SITE_KEY');
     }
 
     /**
