@@ -7,7 +7,7 @@ Adds a "spam protection" field to SilverStripe userforms using Cloudflare's
 ## Requirements
 * SilverStripe 5.x
 * [SilverStripe Spam Protection
-  3.x](https://github.com/silverstripe/silverstripe-spamprotection/)
+  4.x](https://github.com/silverstripe/silverstripe-spamprotection/)
 * PHP CURL
 
 ## Installation
@@ -31,8 +31,8 @@ $form->enableSpamProtection();
 
 ## Configuration
 There are multiple configuration options for the field, you must set the
-site_key and the secret_key which you can get from the [reCAPTCHA
-page](https://www.google.com/recaptcha). These configuration options must be
+site_key and the secret_key which you can get from the [turnstile
+page](https://developers.cloudflare.com/turnstile/). These configuration options must be
 added to your site's yaml config typically this is mysite/\_config/config.yml.
 ```yml
 Terraformers\TurnstileCaptcha\Forms\TurnstileCaptchaField:

@@ -14,38 +14,38 @@ class TurnstileCaptchaField extends FormField
 {
     /**
      * Recaptcha Site Key
-     * @config NocaptchaField.site_key
+     * @config TurnstileCaptchaField.site_key
      */
     private static ?string $site_key = null;
 
     /**
      * Recaptcha Secret Key
-     * @config NocaptchaField.secret_key
+     * @config TurnstileCaptchaField.secret_key
      */
     private static ?string $secret_key = null;
 
 
     /**
      * CURL Proxy Server location
-     * @config NocaptchaField.proxy_server
+     * @config TurnstileCaptchaField.proxy_server
      */
     private static ?string $proxy_server = null;
 
     /**
      * CURL Proxy authentication
-     * @config NocaptchaField.proxy_auth
+     * @config TurnstileCaptchaField.proxy_auth
      */
     private static ?string $proxy_auth = null;
 
     /**
      * CURL Proxy port
-     * @config NocaptchaField.proxy_port
+     * @config TurnstileCaptchaField.proxy_port
      */
     private static $proxy_port;
 
     /**
      * Verify SSL Certificates
-     * @config NocaptchaField.verify_ssl
+     * @config TurnstileCaptchaField.verify_ssl
      * @default true
      */
     private static bool $verify_ssl = true;
@@ -65,13 +65,13 @@ class TurnstileCaptchaField extends FormField
     private static bool $default_handle_submit = true;
 
     /**
-     * Recaptcha Site Key
+     * TurnstileCaptcha Site Key
      * Configurable via Injector config
      */
     protected ?string $_siteKey = null;
 
     /**
-     * Recaptcha Site Key
+     * TurnstileCaptcha Site Key
      * Configurable via Injector config
      */
     protected ?string $_secretKey = null;
@@ -118,7 +118,7 @@ class TurnstileCaptchaField extends FormField
     private bool $handleSubmitEvents;
 
     /**
-     * Creates a new Recaptcha 2 field.
+     * Creates a new TurnstileCaptcha 2 field.
      * @param string $name The internal field name, passed to forms.
      * @param string $title The human-readable field label.
      * @param mixed $value The value of the field (unused)
@@ -144,7 +144,7 @@ class TurnstileCaptchaField extends FormField
         $secretKey = $this->_secretKey ? $this->_secretKey : self::config()->secret_key;
 
         if (empty($siteKey) || empty($secretKey)) {
-            user_error('You must configure Nocaptcha.site_key and Nocaptcha.secret_key, you can retrieve these at https://google.com/recaptcha', E_USER_ERROR);
+            user_error('You must configure site_key and secret_key, you can retrieve these at https://developers.cloudflare.com/turnstile/', E_USER_ERROR);
         }
 
         Requirements::javascript(
@@ -159,7 +159,7 @@ class TurnstileCaptchaField extends FormField
 
 
     /**
-     * Validates the captcha against the Recaptcha API
+     * Validates the captcha against the TurnstileCaptcha API
      *
      * @param Validator $validator Validator to send errors to
      * @return bool Returns boolean true if valid false if not
@@ -172,71 +172,50 @@ class TurnstileCaptchaField extends FormField
 
         if (!isset($recaptchaResponse)) {
             $validator->validationError($this->name, _t(
-                'Terraformers\\TurnstileCaptcha\\Forms\\CaptchaField.EMPTY',
+                'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.NOSCRIPT',
                 'if you do not see the captcha you must enable JavaScript'),
                 'validation');
             return false;
         }
 
-        if (!function_exists('curl_init')) {
-            user_error('You must enable php-curl to use this field', E_USER_ERROR);
-            return false;
-        }
-
+        $curlOptions = [];
         $secret_key = $this->_secretKey ?: self::config()->secret_key;
-        $url = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-        $ch = curl_init($url);
         $proxy_server = $this->_proxyServer ?: self::config()->proxy_server;
         if (!empty($proxy_server)) {
-            curl_setopt($ch, CURLOPT_PROXY, $proxy_server);
+            $curlOptions[CURLOPT_PROXY] = $proxy_server;
 
             $proxy_auth = $this->_proxyAuth ?: self::config()->proxy_auth;
             if (!empty($proxy_auth)) {
-                curl_setopt($ch, CURLOPT_PROXYUSERPWD, $proxy_auth);
+                $curlOptions[CURLOPT_PROXYUSERPWD] = $proxy_auth;
             }
 
             $proxy_port = $this->_proxyPort ?: self::config()->proxy_port;
             if (!empty($proxy_port)) {
-                curl_setopt($ch, CURLOPT_PROXYPORT, $proxy_port);
+                $curlOptions[CURLOPT_PROXYPORT] = $proxy_port;
             }
         }
+        $curlOptions[CURLOPT_RETURNTRANSFER] = true;
+        $curlOptions[CURLOPT_SSL_VERIFYPEER] = self::config()->verify_ssl;
+        $curlOptions[CURLOPT_USERAGENT] = str_replace(',', '/', 'SilverStripe');
+        $client = HttpClient::singleton();
 
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, self::config()->verify_ssl);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_USERAGENT, str_replace(',', '/', 'SilverStripe'));
-        curl_setopt(
-            $ch,
-            CURLOPT_POSTFIELDS,
-            http_build_query([
+        $response = $client->request('POST', 'https://challenges.cloudflare.com/turnstile/v0/siteverify', [
+            'json' => [
                 'secret' => $secret_key,
                 'response' => $recaptchaResponse,
                 'remoteip' => $request->getIP(),
-            ])
-        );
-        $response = json_decode(curl_exec($ch), true);
+            ],
+            'curl' => $curlOptions
+        ]);
 
-        if (is_array($response)) {
-            $this->verifyResponse = $response;
-
-            if (!array_key_exists('success', $response) || !$response['success']) {
-                $validator->validationError($this->name, _t(
-                    'Terraformers\\TurnstileCaptcha\\Forms\\CaptchaField.EMPTY',
-                    '_Please answer the captcha,
-                     if you do not see the captcha you must enable JavaScript'),
-                    'validation');
-                return false;
-            }
-
-        } else {
+        if ($response->getStatusCode() !== 200) {
             $validator->validationError($this->name, _t(
-                'Terraformers\\TurnstileCaptcha\\Forms\\CaptchaField.VALIDATE_ERROR',
+                'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.VALIDATE_ERROR',
                 '_Captcha could not be validated'),
                 'validation');
             $logger = Injector::inst()->get(LoggerInterface::class);
             $logger->error(
-                'Captcha validation failed as request was not successful.'
+                'Turnstile Captch Field validation failed as request was not successful.'
             );
             return false;
         }
@@ -268,7 +247,7 @@ class TurnstileCaptchaField extends FormField
 
     /**
      * Sets the theme for this captcha
-     * @param string $value Theme to set it to, currently the api supports light and dark
+     * @param string $value Theme to set it to, currently the api supports light, dark & auto
      * @return TurnstileCaptchaField
      */
     public function setTheme(string $value): TurnstileCaptchaField
@@ -288,7 +267,7 @@ class TurnstileCaptchaField extends FormField
     }
 
     /**
-     * Gets the site key configured via NocaptchaField.site_key this is used in the template
+     * Gets the site key configured via TurnstileCaptchaField.site_key this is used in the template
      * @return string
      */
     public function getSiteKey(): string
@@ -297,7 +276,7 @@ class TurnstileCaptchaField extends FormField
     }
 
     /**
-     * Setter for _siteKey to allow injector config to override the value
+     * Setter for _siteKey, this will override the injector or environment variable configuration
      */
     public function setSiteKey($key)
     {
@@ -305,7 +284,7 @@ class TurnstileCaptchaField extends FormField
     }
 
     /**
-     * Setter for _secretKey to allow injector config to override the value
+     * Setter for _secretKey, this will override the injector or environment variable configuration
      */
     public function setSecretKey($key)
     {
@@ -313,7 +292,7 @@ class TurnstileCaptchaField extends FormField
     }
 
     /**
-     * Setter for _proxyServer to allow injector config to override the value
+     * Setter for _proxyServer, this will override the injector or environment variable configuration
      */
     public function setProxyServer($server)
     {
@@ -321,7 +300,7 @@ class TurnstileCaptchaField extends FormField
     }
 
     /**
-     * Setter for _proxyAuth to allow injector config to override the value
+     * Setter for _proxyAuth, this will override the injector or environment variable configuration
      */
     public function setProxyAuth($auth)
     {
@@ -329,7 +308,7 @@ class TurnstileCaptchaField extends FormField
     }
 
     /**
-     * Setter for _proxyPort to allow injector config to override the value
+     * Setter for _proxyPort, this will override the injector or environment variable configuration
      */
     public function setProxyPort($port)
     {

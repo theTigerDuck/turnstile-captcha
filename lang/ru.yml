@@ -1,4 +1,4 @@
 ru:
-  Terraformers\TurnstileCaptcha\Forms\CaptchaField:
+  Terraformers\TurnstileCaptcha\Forms\TurnstileCaptchaField:
     NOSCRIPT: "Укажите ответ на капчу, если вы её не видите вам необходимо включить JavaScript."
     VALIDATE_ERROR: "Ошибка проверки капчи - попробуйте ещё раз."

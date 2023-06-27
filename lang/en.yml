@@ -1,4 +1,4 @@
 en:
-  Terraformers\TurnstileCaptcha\Forms\CaptchaField:
+  Terraformers\TurnstileCaptcha\Forms\TurnstileCaptchaField:
     NOSCRIPT: "You must enable JavaScript to submit this form"
     VALIDATE_ERROR: "Captcha could not be validated"

@@ -7,5 +7,5 @@
 </div>
 
 <noscript>
-    <p><%t Terraformers\\TurnstileCaptcha\\Forms\\NocaptchaField.NOSCRIPT "You must enable JavaScript to submit this form" %></p>
+    <p><%t Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.NOSCRIPT "You must enable JavaScript to submit this form" %></p>
 </noscript>
