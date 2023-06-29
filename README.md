@@ -29,22 +29,23 @@ $form->enableSpamProtection();
 ```
 
 ## Configuration
-There are multiple configuration options for the field, you must set the
-site_key and the secret_key in the .env variable.
+Set the `site_key` and the `secret_key` via [environment variables](https://docs.silverstripe.org/en/5/getting_started/environment_management/).
+
 ```yml
 SS_TURNSTILE_SITE_KEY=""
 SS_TURNSTILE_SECRET_KEY=""
 ```
 
-You can get from the [turnstile
-page](https://developers.cloudflare.com/turnstile/). These configuration options must be
-added to your site's yaml config typically this is mysite/_config/config.yml.
+You can get these from your cloudflare account [refer to the turnstile documentation](https://developers.cloudflare.com/turnstile/). 
+
+There are some optional configuration settings that can be
+added to your site's yaml config (typically this is mysite/_config/config.yml).
 ```yml
 Terraformers\TurnstileCaptcha\Forms\TurnstileCaptchaField:
-    default_theme: "light" #Default theme color (optional, light or dark, defaults to light)
-    default_handle_submit: true #Default setting for whether nocaptcha should handle form submission. See "Handling form submission" below.
+    default_theme: "light" #Default theme color (optional, light or dark, defaults to auto)
+    default_render_type: 'explicit' #Default setting for how to render the widget. See the "Render Type" section below.
 ```
-TurnstileCaptchaField is using the HttpClient has a dependency , you can configure your own HttpClient class with the Curl options
+TurnstileCaptchaField uses Guzzle to communicate with cloudflare. If you would like to change http connection settings (Eg proxy settings) you can configure your own HttpClient class via injector
 
 ```yml
 SilverStripe\Core\Injector\Injector:
@@ -59,7 +60,7 @@ like this:
 
 ```php
 $form->enableSpamProtection()
-    ->fields()->fieldByName('Captcha')
+    ->fields()->fieldByName('TurnstileCaptchaField')
     ->setTitle("Spam protection")
     ->setDescription("Please tick the box to prove you're a human and help us stop spam.");
 ```
@@ -74,68 +75,22 @@ in order to use Terraformers\TurnstileCaptcha on comment forms.
 CommentingController::add_extension('CommentSpamProtection');
 ```
 
-## Retrieving the Verify Response
-
-If you wish to manually retrieve the Site Verify response in you form action use
-the `getVerifyResponse()` method
-
-```php
-function doSubmit($data, $form) {
-    $captchaResponse = $form->Fields()->fieldByName('Captcha')->getVerifyResponse();
-
-    // $captchaResponse = array (size=5) [
-    //  'success' => boolean true
-    //  'challenge_ts' => string '2020-09-08T20:48:34Z' (length=20)
-    //  'hostname' => string 'localhost' (length=9)
-    //  'score' => float 0.9
-    //  'action' => string 'submit' (length=6)
-    // ];
-}
-```
-
-## Handling form submission
-By default, the javascript included with this module will add a submit event handler to your form.
-
-If you need to handle form submissions in a special way (for example to support front-end validation),
-you can choose to handle form submit events yourself.
+## Render type
+By default, the turnstyle widget will be rendered automatically. To change this you can set the render type.
 
 This can be configured site-wide using the Config API
 ```yml
 Terraformers\TurnstileCaptcha\Forms\TurnstileCaptchaField:
-    default_handle_submit: false
+    default_render_type: 'explicit'
 ```
 
 Or on a per form basis:
 ```php
-$captchaField = $form->Fields()->fieldByName('Captcha');
-$captchaField->setHandleSubmitEvents(false);
+$captchaField = $form->Fields()->fieldByName('TurnstileCaptchaField');
+$captchaField->setRenderType('explicit');
 ```
 
-With this configuration no event handlers will be added by this module to your form. Instead, a
-function will be provided called `nocaptcha_handleCaptcha` which you can call from your code
-when you're ready to submit your form. It has the following signature:
-```js
-function nocaptcha_handleCaptcha(form, callback)
-```
-`form` must be the form element, and `callback` should be a function that finally submits the form,
-though it is optional.
-
-In the simplest case, you can use it like this:
-```js
-document.addEventListener("DOMContentLoaded", function(event) {
-    // where formID is the element ID for your form
-    const form = document.getElementById(formID);
-    const submitListener = function(event) {
-        event.preventDefault();
-        let valid = true;
-        /* Your validation logic here */
-        if (valid) {
-            nocaptcha_handleCaptcha(form, form.submit.bind(form));
-        }
-    };
-    form.addEventListener('submit', submitListener);
-});
-```
+With this configuration you will need to add your own javascript to render the widget. Refer to the [cloudflare documentation](https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/#explicitly-render-the-turnstile-widget) for details.
 
 ## Reporting an issue
 

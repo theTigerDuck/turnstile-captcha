@@ -6,15 +6,17 @@ use SilverStripe\SpamProtection\SpamProtector;
 
 class TurnstileCaptchaProtector implements SpamProtector
 {
-
     /**
      * @param $name
      * @param $title
      * @param $value
      * @return TurnstileCaptchaField
      */
-    public function getFormField($name = "TurnstileCaptchaField", $title = "Captcha", $value = null): TurnstileCaptchaField
-    {
+    public function getFormField(
+        $name = "TurnstileCaptchaField",
+        $title = "Captcha",
+        $value = null
+    ): TurnstileCaptchaField {
         return TurnstileCaptchaField::create($name, $title);
     }
 

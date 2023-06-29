@@ -10,42 +10,26 @@ use SilverStripe\Control\Controller;
 use SilverStripe\Core\Environment;
 use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Forms\FormField;
+use SilverStripe\Forms\Validator;
 use SilverStripe\i18n\i18n;
 use SilverStripe\View\Requirements;
+use Terraformers\TurnstileCaptcha\Http\ClientInterface;
 use Terraformers\TurnstileCaptcha\Http\HttpClient;
 
-/**
- * @property HttpClient $httpClient
- */
 class TurnstileCaptchaField extends FormField
 {
-    /**
-     * TurnstileCaptchaField Site Key
-     * @config TurnstileCaptchaField.site_key
-     */
-    private static ?string $site_key = null;
-
-    /**
-     * TurnstileCaptchaField Secret Key
-     * @config TurnstileCaptchaField.secret_key
-     */
-    private static ?string $secret_key = null;
-
-
     /**
      * Captcha theme, currently options are light and dark
      * @default light
      */
     private static string $default_theme = 'auto';
 
-
     /**
-     * Whether form submit events are handled directly by this module.
-     * If false, a function is provided that can be called by user code submit handlers.
-     * @default true
+     * control the turnstile render mode
+     * options are implicit or explicit
+     * @defautl implicit
      */
-    private static bool $default_handle_submit = true;
-
+    private static bool $default_render_type = 'implicit';
 
     /**
      * Onload callback to be called for Turnstile is loaded
@@ -56,26 +40,27 @@ class TurnstileCaptchaField extends FormField
     /**
      * Captcha theme, currently options are light and dark
      */
-    private ?string $_captchaTheme = null;
+    private ?string $captchaTheme = null;
 
     /**
      * The verification response
      */
-    protected array $verifyResponse;
+    protected array $verifyResponse = ['success' => false];
 
-
-    /**
-     * Whether form submit events are handled directly by this module.
-     * If false, a function is provided that can be called by user code submit handlers.
-     */
-    private bool $handleSubmitEvents;
+    private bool $renderType;
 
     private static array $dependencies = [
         'httpClient' => '%$' . HttpClient::class
     ];
 
     /**
-     * Creates a new TurnstileCaptcha 2 field.
+     * HTTP client object
+     *
+     */
+    public ClientInterface $httpClient;
+
+    /**
+     * Creates a new TurnstileCaptcha field.
      * @param string $name The internal field name, passed to forms.
      * @param string $title The human-readable field label.
      * @param mixed $value The value of the field (unused)
@@ -86,8 +71,8 @@ class TurnstileCaptchaField extends FormField
 
         $this->title = $title;
 
-        $this->_captchaTheme = self::config()->default_theme;
-        $this->handleSubmitEvents = self::config()->default_handle_submit;
+        $this->captchaTheme = self::config()->default_theme;
+        $this->setRenderType(self::config()->default_render_type);
     }
 
     /**
@@ -95,7 +80,7 @@ class TurnstileCaptchaField extends FormField
      * @param array $properties Array of properties for the form element (not used)
      * @return string Rendered field template
      */
-    public function Field($properties = array())
+    public function Field($properties = array()) //phpcs:ignore PSR1.Methods.CamelCapsMethodName.NotCamelCaps
     {
         $siteKey = $this->getSiteKey();
         $secretKey = $this->getSecretKey();
@@ -106,7 +91,10 @@ class TurnstileCaptchaField extends FormField
 
 
         Requirements::javascript(
-            'https://challenges.cloudflare.com/turnstile/v0/api.js?hl=' . Locale::getPrimaryLanguage(i18n::get_locale()) . ($this->config()->js_onload_callback ? '&onload=' . $this->config()->js_onload_callback : ''),
+            'https://challenges.cloudflare.com/turnstile/v0/api.js?language='
+                . Locale::getPrimaryLanguage(i18n::get_locale())
+                . ($this->config()->js_onload_callback ? '&onload=' . $this->config()->js_onload_callback : '')
+                . ($this->getRenderType() === 'explicit' ? '&render=explicit' : ''),
             [
                 'async' => true,
                 'defer' => true,
@@ -114,7 +102,6 @@ class TurnstileCaptchaField extends FormField
         );
         return parent::Field($properties);
     }
-
 
     /**
      * Validates the captcha against the TurnstileCaptcha API
@@ -130,10 +117,14 @@ class TurnstileCaptchaField extends FormField
         $captchaResponse = $request->requestVar('cf-turnstile-response');
 
         if (!isset($captchaResponse)) {
-            $validator->validationError($this->name, _t(
-                'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.NOSCRIPT',
-                'if you do not see the captcha you must enable JavaScript'),
-                'validation');
+            $validator->validationError(
+                $this->name,
+                _t(
+                    'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.NOSCRIPT',
+                    'if you do not see the captcha you must enable JavaScript'
+                ),
+                'validation'
+            );
             return false;
         }
 
@@ -141,29 +132,37 @@ class TurnstileCaptchaField extends FormField
         $client = $this->httpClient->getClient();
 
         try {
-            $response = $client->request('POST', 'https://challenges.cloudflare.com/turnstile/v0/siteverify', [
-                'json' => [
-                    'secret' => $this->getSecretKey(),
-                    'response' => $captchaResponse,
-                    'remoteip' => $request->getIP(),
-                ],
-                'timeout' => 10
-            ]);
+            $response = $client->request(
+                'POST',
+                'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+                [
+                    'json' => [
+                        'secret' => $this->getSecretKey(),
+                        'response' => $captchaResponse,
+                        'remoteip' => $request->getIP(),
+                    ]
+                ]
+            );
+
+            $responseBody = json_decode($response->getBody(), true);
+            if (is_array($responseBody)) {
+                $this->verifyResponse = $responseBody;
+            }
         } catch (GuzzleException $e) {
             $logger = Injector::inst()->get(LoggerInterface::class);
             $logger->error($e->getMessage());
             return false;
         }
-        $responseBody = json_decode($response->getBody(), true);
 
-        if (is_array($responseBody)) {
-            $this->verifyResponse = $responseBody;
-        }
         if ($response->getStatusCode() !== 200 || !$this->verifyResponse['success']) {
-            $validator->validationError($this->name, _t(
-                'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.VALIDATE_ERROR',
-                'Turnstile Captcha Field could not be validated'),
-                'validation');
+            $validator->validationError(
+                $this->name,
+                _t(
+                    'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.VALIDATE_ERROR',
+                    'Turnstile Captcha Field could not be validated'
+                ),
+                'validation'
+            );
             $logger = Injector::inst()->get(LoggerInterface::class);
             $logger->error(
                 'Turnstile Captcha Field validation failed as request was not successful.'
@@ -175,25 +174,25 @@ class TurnstileCaptchaField extends FormField
     }
 
     /**
-     * Sets whether form submit events are handled directly by this module.
+     * Sets render type of the turnstyle widget
      *
      * @param boolean $value
      * @return TurnstileCaptchaField
      */
-    public function setHandleSubmitEvents(bool $value): TurnstileCaptchaField
+    public function setRenderType(bool $value): TurnstileCaptchaField
     {
-        $this->handleSubmitEvents = $value;
+        $this->renderType = $value;
         return $this;
     }
 
     /**
-     * Get whether form submit events are handled directly by this module.
+     * Get the render type of the turnstyle widget
      *
      * @return boolean
      */
-    public function getHandleSubmitEvents(): bool
+    public function getRenderType(): bool
     {
-        return $this->handleSubmitEvents;
+        return $this->renderType;
     }
 
     /**
@@ -203,7 +202,7 @@ class TurnstileCaptchaField extends FormField
      */
     public function setTheme(string $value): TurnstileCaptchaField
     {
-        $this->_captchaTheme = $value;
+        $this->captchaTheme = $value;
 
         return $this;
     }
@@ -214,7 +213,7 @@ class TurnstileCaptchaField extends FormField
      */
     public function getCaptchaTheme(): string
     {
-        return $this->_captchaTheme;
+        return $this->captchaTheme;
     }
 
     /**
@@ -247,11 +246,12 @@ class TurnstileCaptchaField extends FormField
     }
 
     /**
+     * get response object
+     * used in tests
      * @return array
      */
     public function getVerifyResponse(): array
     {
         return $this->verifyResponse;
     }
-
 }

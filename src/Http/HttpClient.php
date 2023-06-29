@@ -5,7 +5,7 @@ namespace Terraformers\TurnstileCaptcha\Http;
 use GuzzleHttp\Client;
 use SilverStripe\Core\Injector\Injectable;
 
-class HttpClient
+class HttpClient implements ClientInterface
 {
     use Injectable;
 
