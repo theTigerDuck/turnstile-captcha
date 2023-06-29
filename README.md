@@ -8,7 +8,6 @@ Adds a "spam protection" field to SilverStripe userforms using Cloudflare's
 * SilverStripe 5.x
 * [SilverStripe Spam Protection
   4.x](https://github.com/silverstripe/silverstripe-spamprotection/)
-* PHP CURL
 
 ## Installation
 ```
@@ -16,8 +15,8 @@ composer require silverstripe-terraformers/turnstile-captcha
 ```
 
 After installing the module via composer or manual install you must set the spam
-protector to NocaptchaProtector, this needs to be set in your site's config file
-normally this is mysite/\_config/config.yml.
+protector to TurnstileCaptchaProtector, this needs to be set in your site's config file
+normally this is mysite/_config/config.yml.
 ```yml
 SilverStripe\SpamProtection\Extension\FormSpamProtectionExtension:
     default_spam_protector: Terraformers\TurnstileCaptcha\Forms\TurnstileCaptchaProtector
@@ -31,24 +30,31 @@ $form->enableSpamProtection();
 
 ## Configuration
 There are multiple configuration options for the field, you must set the
-site_key and the secret_key which you can get from the [turnstile
+site_key and the secret_key in the .env variable.
+```yml
+SS_TURNSTILE_SITE_KEY=""
+SS_TURNSTILE_SECRET_KEY=""
+```
+
+You can get from the [turnstile
 page](https://developers.cloudflare.com/turnstile/). These configuration options must be
-added to your site's yaml config typically this is mysite/\_config/config.yml.
+added to your site's yaml config typically this is mysite/_config/config.yml.
 ```yml
 Terraformers\TurnstileCaptcha\Forms\TurnstileCaptchaField:
-    site_key: "YOUR_SITE_KEY" #Your site key (required)
-    secret_key: "YOUR_SECRET_KEY" #Your secret key (required)
-    verify_ssl: true #Allows you to disable php-curl's SSL peer verification by setting this to false (optional, defaults to true)
     default_theme: "light" #Default theme color (optional, light or dark, defaults to light)
     default_handle_submit: true #Default setting for whether nocaptcha should handle form submission. See "Handling form submission" below.
-    proxy_server: "" #Your proxy server address (optional)
-    proxy_port: "" #Your proxy server address port (optional)
-    proxy_auth: "" #Your proxy server authentication information (optional)
+```
+TurnstileCaptchaField is using the HttpClient has a dependency , you can configure your own HttpClient class with the Curl options
+
+```yml
+SilverStripe\Core\Injector\Injector:
+    Terraformers\TurnstileCaptcha\Http\HttpClient:
+        class: App\HttpClient
 ```
 
 ## Adding field labels
 
-If you want to add a field label or help text to the Captcha field you can do so
+If you want to add a field label or help text to the TurnstileCaptchaField field you can do so
 like this:
 
 ```php

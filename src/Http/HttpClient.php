@@ -7,20 +7,21 @@ use SilverStripe\Core\Injector\Injectable;
 
 class HttpClient
 {
-  use Injectable;
+    use Injectable;
 
-  protected ?Client $client;
-  public function __construct(?Client $client = null)
-  {
-      if($client === null) {
-          $client = new Client();
-      }
+    protected ?Client $client;
 
-      $this->client = $client;
-  }
+    public function __construct(?Client $client = null)
+    {
+        if ($client === null) {
+            $client = new Client();
+        }
 
-  public function getClient(): Client
-  {
-      return  $this->client;
-  }
+        $this->client = $client;
+    }
+
+    public function getClient(): Client
+    {
+        return $this->client;
+    }
 }

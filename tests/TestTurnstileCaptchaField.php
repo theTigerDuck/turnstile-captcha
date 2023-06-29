@@ -6,9 +6,7 @@ use GuzzleHttp\Client;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
-use GuzzleHttp\Psr7\Request;
 use SilverStripe\Control\Controller;
-use SilverStripe\Core\Environment;
 use SilverStripe\Dev\SapphireTest;
 use SilverStripe\Forms\FieldList;
 use SilverStripe\Forms\Form;
@@ -26,8 +24,8 @@ class TestTurnstileCaptchaField extends SapphireTest
         $form = Form::create(Controller::create(), 'Form', new FieldList(), new FieldList());
 
         $turnstileCaptchField = new TurnstileCaptchaField('turnstileField');
-        $turnstileCaptchField->setSiteKey(Environment::getEnv('SS_TURNSTILE_SITE_KEY'));
-        $turnstileCaptchField->setSecretKey(Environment::getEnv('SS_TURNSTILE_SECRET_KEY'));
+        $turnstileCaptchField->setSiteKey('1x00000000000000000000AA');
+        $turnstileCaptchField->setSecretKey('1x0000000000000000000000000000000AA');
         $turnstileCaptchField->setForm($form);
         $this->assertNotNull($turnstileCaptchField->getSiteKey());
         $this->assertStringContainsString("Form_Form", $turnstileCaptchField->getFormID());
@@ -41,11 +39,7 @@ class TestTurnstileCaptchaField extends SapphireTest
     public function testTurnstileMockApi(): void
     {
 
-        // Mock Request
-        $request = new Request('POST', 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-            [], '');
-
-        // Create a Mock Handler with success response data
+        // Create a Mock Handler with success & fail response data
         $mock = new MockHandler([
             new Response(200, [], '{
                 "success": true,
@@ -54,16 +48,28 @@ class TestTurnstileCaptchaField extends SapphireTest
                 "error-codes": [],
                 "action": "login",
                 "cdata": "sessionid-123456789"
-                }')
+                }'),
+            new Response(201, [], '{
+                "success": false,
+                 "error-codes": ["invalid-input-response"]
+                }'),
         ]);
         $handleStack = HandlerStack::create($mock);
         $client = new Client(['handler' => $handleStack]);
-        // mock response data
-        $response = $client->send($request);
-        $responseData = json_decode($response->getBody(), true);
-        // validating the response data
-        $this->assertTrue($responseData['success']);
-        $this->assertEmpty($responseData['error-codes']);
+
+        // mock the success response data
+        $successResponse = $client->request('GET', '/');
+        $successResponseBody = json_decode($successResponse->getBody(), true);
+        $this->assertTrue($successResponseBody['success']);
+        // expecting a empty error-code array
+        $this->assertEmpty($successResponseBody['error-codes']);
+
+        // mock the failed response data
+        $failedResponse = $client->request('GET', '/');
+        $failedResponseBody = json_decode($failedResponse->getBody(), true);
+        $this->assertFalse($failedResponseBody['success']);
+        // expecting a error message for a failed reponse
+        $this->assertNotEmpty($failedResponseBody['error-codes']);
     }
 
 }

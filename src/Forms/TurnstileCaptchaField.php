@@ -2,8 +2,9 @@
 
 namespace Terraformers\TurnstileCaptcha\Forms;
 
-use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Exception\GuzzleException;
 use Locale;
+use Psr\Container\NotFoundExceptionInterface;
 use Psr\Log\LoggerInterface;
 use SilverStripe\Control\Controller;
 use SilverStripe\Core\Environment;
@@ -13,51 +14,29 @@ use SilverStripe\i18n\i18n;
 use SilverStripe\View\Requirements;
 use Terraformers\TurnstileCaptcha\Http\HttpClient;
 
+/**
+ * @property HttpClient $httpClient
+ */
 class TurnstileCaptchaField extends FormField
 {
     /**
-     * Recaptcha Site Key
+     * TurnstileCaptchaField Site Key
      * @config TurnstileCaptchaField.site_key
      */
     private static ?string $site_key = null;
 
     /**
-     * Recaptcha Secret Key
+     * TurnstileCaptchaField Secret Key
      * @config TurnstileCaptchaField.secret_key
      */
     private static ?string $secret_key = null;
 
 
     /**
-     * CURL Proxy Server location
-     * @config TurnstileCaptchaField.proxy_server
-     */
-    private static ?string $proxy_server = null;
-
-    /**
-     * CURL Proxy authentication
-     * @config TurnstileCaptchaField.proxy_auth
-     */
-    private static ?string $proxy_auth = null;
-
-    /**
-     * CURL Proxy port
-     * @config TurnstileCaptchaField.proxy_port
-     */
-    private static $proxy_port;
-
-    /**
-     * Verify SSL Certificates
-     * @config TurnstileCaptchaField.verify_ssl
-     * @default true
-     */
-    private static bool $verify_ssl = true;
-
-    /**
      * Captcha theme, currently options are light and dark
      * @default light
      */
-    private static string $default_theme = 'light';
+    private static string $default_theme = 'auto';
 
 
     /**
@@ -67,35 +46,6 @@ class TurnstileCaptchaField extends FormField
      */
     private static bool $default_handle_submit = true;
 
-    /**
-     * TurnstileCaptcha Site Key
-     * Configurable via Injector config
-     */
-    protected ?string $_siteKey = null;
-
-    /**
-     * TurnstileCaptcha Site Key
-     * Configurable via Injector config
-     */
-    protected ?string $_secretKey = null;
-
-    /**
-     * CURL Proxy Server location
-     * Configurable via Injector config
-     */
-    protected ?string $_proxyServer = null;
-
-    /**
-     * CURL Proxy authentication
-     * Configurable via Injector config
-     */
-    protected ?string $_proxyAuth = null;
-
-    /**
-     * CURL Proxy port
-     * Configurable via Injector config
-     */
-    protected $_proxyPort;
 
     /**
      * Onload callback to be called for Turnstile is loaded
@@ -119,6 +69,10 @@ class TurnstileCaptchaField extends FormField
      * If false, a function is provided that can be called by user code submit handlers.
      */
     private bool $handleSubmitEvents;
+
+    private static array $dependencies = [
+        'httpClient' => '%$' . HttpClient::class
+    ];
 
     /**
      * Creates a new TurnstileCaptcha 2 field.
@@ -144,11 +98,12 @@ class TurnstileCaptchaField extends FormField
     public function Field($properties = array())
     {
         $siteKey = $this->getSiteKey();
-        $secretKey = $this->_secretKey ? $this->_secretKey :  Environment::getEnv('SS_TURNSTILE_SECRET_KEY');
+        $secretKey = $this->getSecretKey();
 
         if (empty($siteKey) || empty($secretKey)) {
             user_error('You must configure site_key and secret_key, you can retrieve these at https://developers.cloudflare.com/turnstile/', E_USER_ERROR);
         }
+
 
         Requirements::javascript(
             'https://challenges.cloudflare.com/turnstile/v0/api.js?hl=' . Locale::getPrimaryLanguage(i18n::get_locale()) . ($this->config()->js_onload_callback ? '&onload=' . $this->config()->js_onload_callback : ''),
@@ -165,15 +120,16 @@ class TurnstileCaptchaField extends FormField
      * Validates the captcha against the TurnstileCaptcha API
      *
      * @param Validator $validator Validator to send errors to
-     * @return bool Returns boolean true if valid false if not
+     * @return bool Returns boolean
+     * @throws NotFoundExceptionInterface
      */
-    public function validate($validator)
+    public function validate($validator): bool
     {
 
         $request = Controller::curr()->getRequest();
-        $recaptchaResponse = $request->requestVar('cf-turnstile-response');
+        $captchaResponse = $request->requestVar('cf-turnstile-response');
 
-        if (!isset($recaptchaResponse)) {
+        if (!isset($captchaResponse)) {
             $validator->validationError($this->name, _t(
                 'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.NOSCRIPT',
                 'if you do not see the captcha you must enable JavaScript'),
@@ -181,51 +137,36 @@ class TurnstileCaptchaField extends FormField
             return false;
         }
 
-        $curlOptions = [];
-        $secret_key = $this->_secretKey ?: Environment::getEnv('SS_TURNSTILE_SECRET_KEY');
-        $proxy_server = $this->_proxyServer ?: self::config()->proxy_server;
-        if (!empty($proxy_server)) {
-            $curlOptions[CURLOPT_PROXY] = $proxy_server;
 
-            $proxy_auth = $this->_proxyAuth ?: self::config()->proxy_auth;
-            if (!empty($proxy_auth)) {
-                $curlOptions[CURLOPT_PROXYUSERPWD] = $proxy_auth;
-            }
+        $client = $this->httpClient->getClient();
 
-            $proxy_port = $this->_proxyPort ?: self::config()->proxy_port;
-            if (!empty($proxy_port)) {
-                $curlOptions[CURLOPT_PROXYPORT] = $proxy_port;
-            }
+        try {
+            $response = $client->request('POST', 'https://challenges.cloudflare.com/turnstile/v0/siteverify', [
+                'json' => [
+                    'secret' => $this->getSecretKey(),
+                    'response' => $captchaResponse,
+                    'remoteip' => $request->getIP(),
+                ],
+                'timeout' => 10
+            ]);
+        } catch (GuzzleException $e) {
+            $logger = Injector::inst()->get(LoggerInterface::class);
+            $logger->error($e->getMessage());
+            return false;
         }
-        $curlOptions[CURLOPT_RETURNTRANSFER] = true;
-        $curlOptions[CURLOPT_SSL_VERIFYPEER] = self::config()->verify_ssl;
-        $curlOptions[CURLOPT_USERAGENT] = str_replace(',', '/', 'SilverStripe');
-        $client = HttpClient::create()->getClient();
+        $responseBody = json_decode($response->getBody(), true);
 
-       try {
-           $response = $client->request('POST', 'https://challenges.cloudflare.com/turnstile/v0/siteverify',[
-               'json' => [
-                   'secret' => $secret_key,
-                   'response' => $recaptchaResponse,
-                   'remoteip' => $request->getIP(),
-               ],
-               'curl' => $curlOptions,
-               'timeout' =>10
-           ]);
-       }catch (Throwable $e) {
-           if($e instanceof RequestException && $e->hasResponse()){
-               return  $e->getResponse();
-           }
-       }
-
-        if ($response->getStatusCode() !== 200) {
+        if (is_array($responseBody)) {
+            $this->verifyResponse = $responseBody;
+        }
+        if ($response->getStatusCode() !== 200 || !$this->verifyResponse['success']) {
             $validator->validationError($this->name, _t(
                 'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.VALIDATE_ERROR',
-                '_Captcha could not be validated'),
+                'Turnstile Captcha Field could not be validated'),
                 'validation');
             $logger = Injector::inst()->get(LoggerInterface::class);
             $logger->error(
-                'Turnstile Captch Field validation failed as request was not successful.'
+                'Turnstile Captcha Field validation failed as request was not successful.'
             );
             return false;
         }
@@ -277,53 +218,24 @@ class TurnstileCaptchaField extends FormField
     }
 
     /**
-     * Gets the site key configured via TurnstileCaptchaField.site_key this is used in the template
+     * Gets the site key configured via .env variable this is used in the template
      * @return string
      */
     public function getSiteKey(): string
     {
-        return $this->_sitekey ? $this->_sitekey : Environment::getEnv('SS_TURNSTILE_SITE_KEY');
+
+        return Environment::getEnv('SS_TURNSTILE_SITE_KEY');
     }
 
     /**
-     * Setter for _siteKey, this will override the injector or environment variable configuration
+     * Gets the site key configured via .env variable this is used in the template
+     * @return string
      */
-    public function setSiteKey($key)
+    public function getSecretKey(): string
     {
-        $this->_sitekey = $key;
+        return Environment::getEnv('SS_TURNSTILE_SECRET_KEY');
     }
 
-    /**
-     * Setter for _secretKey, this will override the injector or environment variable configuration
-     */
-    public function setSecretKey($key)
-    {
-        $this->_secretKey = $key;
-    }
-
-    /**
-     * Setter for _proxyServer, this will override the injector or environment variable configuration
-     */
-    public function setProxyServer($server)
-    {
-        $this->_proxyServer = $server;
-    }
-
-    /**
-     * Setter for _proxyAuth, this will override the injector or environment variable configuration
-     */
-    public function setProxyAuth($auth)
-    {
-        $this->_proxyAuth = $auth;
-    }
-
-    /**
-     * Setter for _proxyPort, this will override the injector or environment variable configuration
-     */
-    public function setProxyPort($port)
-    {
-        $this->_proxyPort = $port;
-    }
 
     /**
      * Gets the form's id
