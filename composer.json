@@ -17,7 +17,7 @@
     ],
     "require": {
         "php": "^8.1",
-        "php-intl": "*",
+        "ext-intl": "*",
         "silverstripe/framework": "^5.0",
         "silverstripe/spamprotection": "^4"
     },
