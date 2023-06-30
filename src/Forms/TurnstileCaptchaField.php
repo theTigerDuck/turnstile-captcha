@@ -29,7 +29,7 @@ class TurnstileCaptchaField extends FormField
      * options are implicit or explicit
      * @defautl implicit
      */
-    private static bool $default_render_type = 'implicit';
+    private static string $default_render_type = 'implicit';
 
     /**
      * Onload callback to be called for Turnstile is loaded
@@ -151,6 +151,14 @@ class TurnstileCaptchaField extends FormField
         } catch (GuzzleException $e) {
             $logger = Injector::inst()->get(LoggerInterface::class);
             $logger->error($e->getMessage());
+            $validator->validationError(
+                $this->name,
+                _t(
+                    'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.VALIDATE_ERROR',
+                    'Turnstile Captcha Field could not be validated'
+                ),
+                'validation'
+            );
             return false;
         }
 
