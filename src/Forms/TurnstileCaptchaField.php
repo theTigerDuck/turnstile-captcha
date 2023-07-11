@@ -97,7 +97,6 @@ class TurnstileCaptchaField extends FormField
                 . ($this->getRenderType() === 'explicit' ? '&render=explicit' : ''),
             [
                 'async' => true,
-                'defer' => true,
             ]
         );
         return parent::Field($properties);
