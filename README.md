@@ -1,8 +1,7 @@
-Turnstile Smart CAPTCHA
+Silverstripe Turnstile CAPTCHA
 =================
-(Please note this is a initial work, Have not done any Test yet not ideal for production environment)
 Adds a "spam protection" field to SilverStripe userforms using Cloudflare's
-[smart CAPTCHA](https://developers.cloudflare.com/turnstile) service.
+[Turnstile CAPTCHA](https://developers.cloudflare.com/turnstile) service.
 
 ## Requirements
 * SilverStripe 5.x
