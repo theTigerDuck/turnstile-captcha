@@ -9,6 +9,7 @@ use Psr\Log\LoggerInterface;
 use SilverStripe\Control\Controller;
 use SilverStripe\Core\Environment;
 use SilverStripe\Core\Injector\Injector;
+use SilverStripe\Core\Validation\ValidationResult;
 use SilverStripe\Forms\FormField;
 use SilverStripe\Forms\Validator;
 use SilverStripe\i18n\i18n;
@@ -105,26 +106,25 @@ class TurnstileCaptchaField extends FormField
     /**
      * Validates the captcha against the TurnstileCaptcha API
      *
-     * @param Validator $validator Validator to send errors to
-     * @return bool Returns boolean
+     * @return ValidationResult
      * @throws NotFoundExceptionInterface
      */
-    public function validate($validator): bool
+    public function validate(): ValidationResult
     {
-
+        $result = ValidationResult::create();
         $request = Controller::curr()->getRequest();
         $captchaResponse = $request->requestVar('cf-turnstile-response');
 
         if (!isset($captchaResponse)) {
-            $validator->validationError(
+            $result->addFieldError(
                 $this->name,
                 _t(
                     'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.NOSCRIPT',
                     'if you do not see the captcha you must enable JavaScript'
                 ),
-                'validation'
+                "validation"
             );
-            return false;
+            return $result;
         }
 
 
@@ -150,34 +150,34 @@ class TurnstileCaptchaField extends FormField
         } catch (GuzzleException $e) {
             $logger = Injector::inst()->get(LoggerInterface::class);
             $logger->error($e->getMessage());
-            $validator->validationError(
+            $result->addFieldError(
                 $this->name,
                 _t(
                     'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.VALIDATE_ERROR',
                     'Turnstile Captcha Field could not be validated'
                 ),
-                'validation'
+                "validation"
             );
-            return false;
+            return $result;
         }
 
         if ($response->getStatusCode() !== 200 || !$this->verifyResponse['success']) {
-            $validator->validationError(
+            $result->addFieldError(
                 $this->name,
                 _t(
                     'Terraformers\\TurnstileCaptcha\\Forms\\TurnstileCaptchaField.VALIDATE_ERROR',
                     'Turnstile Captcha Field could not be validated'
                 ),
-                'validation'
+                "validation"
             );
             $logger = Injector::inst()->get(LoggerInterface::class);
             $logger->error(
                 'Turnstile Captcha Field validation failed as request was not successful.'
             );
-            return false;
+            return $result;
         }
 
-        return true;
+        return $result;
     }
 
     /**
